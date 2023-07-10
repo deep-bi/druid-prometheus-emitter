@@ -22,7 +22,7 @@
   <parent>
     <artifactId>druid</artifactId>
     <groupId>org.apache.druid</groupId>
-    <version>25.0.0</version>
+    <version>26.0.0</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
@@ -38,7 +38,7 @@
   <dependencies>
     <dependency>
       <groupId>org.apache.druid</groupId>
-      <artifactId>druid-core</artifactId>
+      <artifactId>druid-processing</artifactId>
       <version>${project.parent.version}</version>
       <scope>provided</scope>
     </dependency>
