@@ -63,6 +63,9 @@ public class PrometheusEmitterConfig
   @JsonProperty
   private final boolean addServiceAsLabel;
 
+  @JsonProperty
+  private final boolean deleteOnShutdown;
+
   @JsonCreator
   public PrometheusEmitterConfig(
       @JsonProperty("strategy") @Nullable Strategy strategy,
@@ -72,7 +75,8 @@ public class PrometheusEmitterConfig
       @JsonProperty("pushGatewayAddress") @Nullable String pushGatewayAddress,
       @JsonProperty("addHostAsLabel") boolean addHostAsLabel,
       @JsonProperty("addServiceAsLabel") boolean addServiceAsLabel,
-      @JsonProperty("flushPeriod") Integer flushPeriod
+      @JsonProperty("flushPeriod") Integer flushPeriod,
+      @JsonProperty("deleteOnShutdown") boolean deleteOnShutdown
   )
   {
     this.strategy = strategy != null ? strategy : Strategy.exporter;
@@ -81,7 +85,10 @@ public class PrometheusEmitterConfig
     if (strategy == Strategy.exporter) {
       Preconditions.checkArgument(port != null, "For `exporter` strategy, port must be specified.");
     } else if (this.strategy == Strategy.pushgateway) {
-      Preconditions.checkArgument(pushGatewayAddress != null, "For `pushgateway` strategy, pushGatewayAddress must be specified.");
+      Preconditions.checkArgument(
+          pushGatewayAddress != null,
+          "For `pushgateway` strategy, pushGatewayAddress must be specified."
+      );
       if (Objects.nonNull(flushPeriod)) {
         Preconditions.checkArgument(flushPeriod > 0, "flushPeriod must be greater than 0.");
       } else {
@@ -94,6 +101,7 @@ public class PrometheusEmitterConfig
     this.flushPeriod = flushPeriod;
     this.addHostAsLabel = addHostAsLabel;
     this.addServiceAsLabel = addServiceAsLabel;
+    this.deleteOnShutdown = deleteOnShutdown;
   }
 
   public String getNamespace()
@@ -135,6 +143,11 @@ public class PrometheusEmitterConfig
   public boolean isAddServiceAsLabel()
   {
     return addServiceAsLabel;
+  }
+
+  public boolean deleteOnShutdown()
+  {
+    return deleteOnShutdown;
   }
 
   public enum Strategy

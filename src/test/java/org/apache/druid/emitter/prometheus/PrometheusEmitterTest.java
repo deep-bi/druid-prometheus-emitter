@@ -25,6 +25,7 @@ import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.exporter.PushGateway;
 import org.apache.druid.java.util.emitter.core.Emitter;
 import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
+import org.easymock.EasyMock;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -32,6 +33,7 @@ import java.io.IOException;
 
 import static org.easymock.EasyMock.anyObject;
 import static org.easymock.EasyMock.anyString;
+import static org.easymock.EasyMock.expectLastCall;
 import static org.easymock.EasyMock.mock;
 
 
@@ -41,7 +43,7 @@ public class PrometheusEmitterTest
   public void testEmitterWithServiceLabel()
   {
     CollectorRegistry.defaultRegistry.clear();
-    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, false, true, 60);
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, false, true, 60, false);
     PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
     Emitter emitter = prometheusEmitterModule.getEmitter(config);
     ServiceMetricEvent build = ServiceMetricEvent.builder()
@@ -62,7 +64,7 @@ public class PrometheusEmitterTest
   public void testEmitterWithServiceAndHostLabel()
   {
     CollectorRegistry.defaultRegistry.clear();
-    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, true, true, 60);
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, true, true, 60, false);
     PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
     Emitter emitter = prometheusEmitterModule.getEmitter(config);
     ServiceMetricEvent build = ServiceMetricEvent.builder()
@@ -83,7 +85,7 @@ public class PrometheusEmitterTest
   public void testEmitterMetric()
   {
     CollectorRegistry.defaultRegistry.clear();
-    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace", null, 0, "pushgateway", true, true, 60);
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace", null, 0, "pushgateway", true, true, 60, false);
     PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
     Emitter emitter = prometheusEmitterModule.getEmitter(config);
     ServiceMetricEvent build = ServiceMetricEvent.builder()
@@ -104,12 +106,12 @@ public class PrometheusEmitterTest
   @Test
   public void testEmitterStart()
   {
-    PrometheusEmitterConfig exportEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, "namespace1", null, 0, null, true, true, 60);
+    PrometheusEmitterConfig exportEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, "namespace1", null, 0, null, true, true, 60, false);
     PrometheusEmitter exportEmitter = new PrometheusEmitter(exportEmitterConfig);
     exportEmitter.start();
     Assert.assertNotNull(exportEmitter.getServer());
 
-    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace2", null, 0, "pushgateway", true, true, 60);
+    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace2", null, 0, "pushgateway", true, true, 60, false);
     PrometheusEmitter pushEmitter = new PrometheusEmitter(pushEmitterConfig);
     pushEmitter.start();
     Assert.assertNotNull(pushEmitter.getPushGateway());
@@ -118,7 +120,7 @@ public class PrometheusEmitterTest
   @Test
   public void testEmitterPush() throws IOException
   {
-    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60);
+    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60, false);
 
     PushGateway mockPushGateway = mock(PushGateway.class);
     mockPushGateway.push(anyObject(Collector.class), anyString(), anyObject(ImmutableMap.class));
@@ -135,6 +137,58 @@ public class PrometheusEmitterTest
   }
 
   @Test
+  public void testEmitterWithDeleteOnShutdown() throws IOException
+  {
+    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60, true);
+
+    PushGateway mockPushGateway = mock(PushGateway.class);
+    mockPushGateway.push(anyObject(CollectorRegistry.class), anyString(), anyObject(ImmutableMap.class));
+    expectLastCall().atLeastOnce();
+    mockPushGateway.delete(anyString(), anyObject(ImmutableMap.class));
+    expectLastCall().atLeastOnce();
+
+    EasyMock.replay(mockPushGateway);
+
+    PrometheusEmitter emitter = new PrometheusEmitter(emitterConfig);
+    emitter.start();
+    emitter.setPushGateway(mockPushGateway);
+    ServiceMetricEvent build = ServiceMetricEvent.builder()
+                                                 .setDimension("task", "index_parallel")
+                                                 .build("task/run/time", 500)
+                                                 .build(ImmutableMap.of("service", "peon", "host", "druid.test.cn"));
+    emitter.emit(build);
+    emitter.flush();
+    emitter.close();
+
+    EasyMock.verify(mockPushGateway);
+  }
+
+  @Test
+  public void testEmitterWithoutDeleteOnShutdown() throws IOException
+  {
+    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60, false);
+
+    PushGateway mockPushGateway = mock(PushGateway.class);
+    mockPushGateway.push(anyObject(CollectorRegistry.class), anyString(), anyObject(ImmutableMap.class));
+    expectLastCall().atLeastOnce();
+
+    EasyMock.replay(mockPushGateway);
+
+    PrometheusEmitter emitter = new PrometheusEmitter(emitterConfig);
+    emitter.start();
+    emitter.setPushGateway(mockPushGateway);
+    ServiceMetricEvent build = ServiceMetricEvent.builder()
+                                                 .setDimension("task", "index_parallel")
+                                                 .build("task/run/time", 500)
+                                                 .build(ImmutableMap.of("service", "peon", "host", "druid.test.cn"));
+    emitter.emit(build);
+    emitter.flush();
+    emitter.close();
+
+    EasyMock.verify(mockPushGateway);
+  }
+
+  @Test
   public void testEmitterConfigCreationWithNullAsAddress()
   {
     // pushGatewayAddress can be null if it's exporter mode
@@ -146,7 +200,8 @@ public class PrometheusEmitterTest
         null,
         true,
         true,
-        60
+        60,
+        false
     );
 
     Assert.assertThrows(
@@ -160,7 +215,8 @@ public class PrometheusEmitterTest
             null,
             true,
             true,
-            50
+            50,
+            false
         )
     );
   }
@@ -168,7 +224,7 @@ public class PrometheusEmitterTest
   @Test
   public void testEmitterStartWithHttpUrl()
   {
-    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace4", null, 0, "http://pushgateway", true, true, 60);
+    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace4", null, 0, "http://pushgateway", true, true, 60, false);
     PrometheusEmitter pushEmitter = new PrometheusEmitter(pushEmitterConfig);
     pushEmitter.start();
     Assert.assertNotNull(pushEmitter.getPushGateway());
@@ -177,7 +233,7 @@ public class PrometheusEmitterTest
   @Test
   public void testEmitterStartWithHttpsUrl()
   {
-    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace5", null, 0, "https://pushgateway", true, true, 60);
+    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace5", null, 0, "https://pushgateway", true, true, 60, false);
     PrometheusEmitter pushEmitter = new PrometheusEmitter(pushEmitterConfig);
     pushEmitter.start();
     Assert.assertNotNull(pushEmitter.getPushGateway());
@@ -197,7 +253,8 @@ public class PrometheusEmitterTest
             "https://pushgateway",
             true,
             true,
-            60
+            60,
+            false
         )
     );
 
@@ -210,7 +267,8 @@ public class PrometheusEmitterTest
         "https://pushgateway",
         true,
         true,
-        60
+        60,
+        false
     );
   }
 }
