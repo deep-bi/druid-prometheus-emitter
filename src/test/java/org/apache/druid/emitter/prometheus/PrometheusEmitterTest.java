@@ -30,12 +30,13 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.easymock.EasyMock.anyObject;
 import static org.easymock.EasyMock.anyString;
 import static org.easymock.EasyMock.expectLastCall;
 import static org.easymock.EasyMock.mock;
-
 
 public class PrometheusEmitterTest
 {
@@ -43,7 +44,7 @@ public class PrometheusEmitterTest
   public void testEmitterWithServiceLabel()
   {
     CollectorRegistry.defaultRegistry.clear();
-    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, false, true, 60, false);
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, false, true, 60, null, false);
     PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
     Emitter emitter = prometheusEmitterModule.getEmitter(config);
     ServiceMetricEvent build = ServiceMetricEvent.builder()
@@ -64,54 +65,172 @@ public class PrometheusEmitterTest
   public void testEmitterWithServiceAndHostLabel()
   {
     CollectorRegistry.defaultRegistry.clear();
-    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, true, true, 60, false);
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, true, true, 60, null, false);
     PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
     Emitter emitter = prometheusEmitterModule.getEmitter(config);
     ServiceMetricEvent build = ServiceMetricEvent.builder()
-            .setDimension("server", "druid-data01.vpc.region")
-            .build("segment/loadQueue/count", 10)
-            .build(ImmutableMap.of("service", "historical", "host", "druid.test.cn"));
+                                                 .setDimension("server", "druid-data01.vpc.region")
+                                                 .build("segment/loadQueue/count", 10)
+                                                 .build(ImmutableMap.of("service", "historical", "host", "druid.test.cn"));
     Assert.assertEquals("historical", build.getService());
     Assert.assertEquals("druid.test.cn", build.getHost());
     Assert.assertFalse(build.getUserDims().isEmpty());
     emitter.emit(build);
     Double count = CollectorRegistry.defaultRegistry.getSampleValue(
-            "druid_segment_loadqueue_count", new String[]{"druid_service", "host_name", "server"}, new String[]{"historical", "druid.test.cn", "druid_data01_vpc_region"}
+        "druid_segment_loadqueue_count", new String[]{"druid_service", "host_name", "server"}, new String[]{"historical", "druid.test.cn", "druid_data01_vpc_region"}
     );
     Assert.assertEquals(10, count.intValue());
+  }
+
+  @Test
+  public void testEmitterWithExtraLabels()
+  {
+    CollectorRegistry.defaultRegistry.clear();
+    Map<String, String> extraLabels = new HashMap<>();
+    extraLabels.put("labelName", "labelValue");
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, false, false, 60, extraLabels, false);
+    PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
+    Emitter emitter = prometheusEmitterModule.getEmitter(config);
+    ServiceMetricEvent build = ServiceMetricEvent.builder()
+                                                 .setDimension("server", "druid-data01.vpc.region")
+                                                 .build("segment/loadQueue/count", 10)
+                                                 .build(ImmutableMap.of("service", "historical", "host", "druid.test.cn"));
+    emitter.emit(build);
+    Double count = CollectorRegistry.defaultRegistry.getSampleValue(
+        "druid_segment_loadqueue_count",
+        new String[]{"labelName", "server"},
+        new String[]{"labelValue", "druid_data01_vpc_region"}
+    );
+    Assert.assertEquals(10, count.intValue());
+  }
+
+  @Test
+  public void testEmitterWithServiceLabelAndExtraLabel()
+  {
+    CollectorRegistry.defaultRegistry.clear();
+    Map<String, String> extraLabels = new HashMap<>();
+    extraLabels.put("labelName", "labelValue");
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, false, true, 60, extraLabels, false);
+    PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
+    Emitter emitter = prometheusEmitterModule.getEmitter(config);
+    ServiceMetricEvent build = ServiceMetricEvent.builder()
+                                                 .setDimension("server", "druid-data01.vpc.region")
+                                                 .build("segment/loadQueue/count", 10)
+                                                 .build(ImmutableMap.of("service", "historical", "host", "druid.test.cn"));
+    emitter.emit(build);
+    Double count = CollectorRegistry.defaultRegistry.getSampleValue(
+        "druid_segment_loadqueue_count",
+        new String[]{"druid_service", "labelName", "server"},
+        new String[]{"historical", "labelValue", "druid_data01_vpc_region"}
+    );
+    Assert.assertEquals(10, count.intValue());
+  }
+
+  @Test
+  public void testEmitterWithEmptyExtraLabels()
+  {
+    CollectorRegistry.defaultRegistry.clear();
+    Map<String, String> extraLabels = new HashMap<>();
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, false, true, 60, extraLabels, false);
+    PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
+    Emitter emitter = prometheusEmitterModule.getEmitter(config);
+    ServiceMetricEvent build = ServiceMetricEvent.builder()
+                                                 .setDimension("server", "druid-data01.vpc.region")
+                                                 .build("segment/loadQueue/count", 10)
+                                                 .build(ImmutableMap.of("service", "historical", "host", "druid.test.cn"));
+    emitter.emit(build);
+    Double count = CollectorRegistry.defaultRegistry.getSampleValue(
+        "druid_segment_loadqueue_count",
+        new String[]{"druid_service", "server"},
+        new String[]{"historical", "druid_data01_vpc_region"}
+    );
+    Assert.assertEquals(10, count.intValue());
+  }
+
+  @Test
+  public void testEmitterWithMultipleExtraLabels()
+  {
+    CollectorRegistry.defaultRegistry.clear();
+    Map<String, String> extraLabels = new HashMap<>();
+    extraLabels.put("labelName1", "labelValue1");
+    extraLabels.put("labelName2", "labelValue2");
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, false, true, 60, extraLabels, false);
+    PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
+    Emitter emitter = prometheusEmitterModule.getEmitter(config);
+    ServiceMetricEvent build = ServiceMetricEvent.builder()
+                                                 .setDimension("server", "druid-data01.vpc.region")
+                                                 .build("segment/loadQueue/count", 10)
+                                                 .build(ImmutableMap.of("service", "historical", "host", "druid.test.cn"));
+    emitter.emit(build);
+    Double count = CollectorRegistry.defaultRegistry.getSampleValue(
+        "druid_segment_loadqueue_count",
+        new String[]{"druid_service", "labelName1", "labelName2", "server"},
+        new String[]{"historical", "labelValue1", "labelValue2", "druid_data01_vpc_region"}
+    );
+    Assert.assertEquals(10, count.intValue());
+  }
+
+  @Test
+  public void testEmitterWithLabelCollision()
+  {
+    CollectorRegistry.defaultRegistry.clear();
+    // ExtraLabels contains a label that collides with a service label
+    Map<String, String> extraLabels = new HashMap<>();
+    extraLabels.put("server", "collisionLabelValue");
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, null, null, 0, null, false, true, 60, extraLabels, false);
+    PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
+    Emitter emitter = prometheusEmitterModule.getEmitter(config);
+    ServiceMetricEvent build = ServiceMetricEvent.builder()
+                                                 .setDimension("server", "druid-data01.vpc.region")
+                                                 .build("segment/loadQueue/count", 10)
+                                                 .build(ImmutableMap.of("service", "historical", "host", "druid.test.cn"));
+    emitter.emit(build);
+    Double count = CollectorRegistry.defaultRegistry.getSampleValue(
+        "druid_segment_loadqueue_count",
+        new String[]{"druid_service", "server"},
+        new String[]{"historical", "druid_data01_vpc_region"}
+    );
+    // Check that the extraLabel did not override the service label
+    Assert.assertEquals(10, count.intValue());
+    // Check that the extraLabel is not present in the CollectorRegistry
+    Assert.assertNull(CollectorRegistry.defaultRegistry.getSampleValue(
+        "druid_segment_loadqueue_count",
+        new String[]{"druid_service", "server"},
+        new String[]{"historical", "collisionLabelValue"}
+    ));
   }
 
   @Test
   public void testEmitterMetric()
   {
     CollectorRegistry.defaultRegistry.clear();
-    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace", null, 0, "pushgateway", true, true, 60, false);
+    PrometheusEmitterConfig config = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace", null, 0, "pushgateway", true, true, 60, null, false);
     PrometheusEmitterModule prometheusEmitterModule = new PrometheusEmitterModule();
     Emitter emitter = prometheusEmitterModule.getEmitter(config);
     ServiceMetricEvent build = ServiceMetricEvent.builder()
-            .setDimension("dataSource", "test")
-            .setDimension("taskType", "index_parallel")
-            .build("task/run/time", 500)
-            .build(ImmutableMap.of("service", "overlord", "host", "druid.test.cn"));
+                                                 .setDimension("dataSource", "test")
+                                                 .setDimension("taskType", "index_parallel")
+                                                 .build("task/run/time", 500)
+                                                 .build(ImmutableMap.of("service", "overlord", "host", "druid.test.cn"));
     emitter.emit(build);
     double assertEpsilon = 0.0001;
     Assert.assertEquals(0.0, CollectorRegistry.defaultRegistry.getSampleValue(
-            "namespace_task_run_time_bucket", new String[]{"dataSource", "druid_service", "host_name", "taskType", "le"}, new String[]{"test", "overlord", "druid.test.cn", "index_parallel", "0.1"}
+        "namespace_task_run_time_bucket", new String[]{"dataSource", "druid_service", "host_name", "taskType", "le"}, new String[]{"test", "overlord", "druid.test.cn", "index_parallel", "0.1"}
     ), assertEpsilon);
     Assert.assertEquals(1.0, CollectorRegistry.defaultRegistry.getSampleValue(
-            "namespace_task_run_time_bucket", new String[]{"dataSource", "druid_service", "host_name", "taskType", "le"}, new String[]{"test", "overlord", "druid.test.cn", "index_parallel", "0.5"}
+        "namespace_task_run_time_bucket", new String[]{"dataSource", "druid_service", "host_name", "taskType", "le"}, new String[]{"test", "overlord", "druid.test.cn", "index_parallel", "0.5"}
     ), assertEpsilon);
   }
 
   @Test
   public void testEmitterStart()
   {
-    PrometheusEmitterConfig exportEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, "namespace1", null, 0, null, true, true, 60, false);
+    PrometheusEmitterConfig exportEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.exporter, "namespace1", null, 0, null, true, true, 60, null, false);
     PrometheusEmitter exportEmitter = new PrometheusEmitter(exportEmitterConfig);
     exportEmitter.start();
     Assert.assertNotNull(exportEmitter.getServer());
 
-    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace2", null, 0, "pushgateway", true, true, 60, false);
+    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace2", null, 0, "pushgateway", true, true, 60, null, false);
     PrometheusEmitter pushEmitter = new PrometheusEmitter(pushEmitterConfig);
     pushEmitter.start();
     Assert.assertNotNull(pushEmitter.getPushGateway());
@@ -120,7 +239,7 @@ public class PrometheusEmitterTest
   @Test
   public void testEmitterPush() throws IOException
   {
-    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60, false);
+    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60, null, false);
 
     PushGateway mockPushGateway = mock(PushGateway.class);
     mockPushGateway.push(anyObject(Collector.class), anyString(), anyObject(ImmutableMap.class));
@@ -129,17 +248,105 @@ public class PrometheusEmitterTest
     emitter.start();
     emitter.setPushGateway(mockPushGateway);
     ServiceMetricEvent build = ServiceMetricEvent.builder()
-            .setDimension("task", "index_parallel")
-            .build("task/run/time", 500)
-            .build(ImmutableMap.of("service", "peon", "host", "druid.test.cn"));
+                                                 .setDimension("task", "index_parallel")
+                                                 .build("task/run/time", 500)
+                                                 .build(ImmutableMap.of("service", "peon", "host", "druid.test.cn"));
     emitter.emit(build);
     emitter.flush();
   }
 
   @Test
+  public void testEmitterConfigCreationWithNullAsAddress()
+  {
+    // pushGatewayAddress can be null if it's exporter mode
+    new PrometheusEmitterConfig(
+        PrometheusEmitterConfig.Strategy.exporter,
+        "namespace5",
+        null,
+        1,
+        null,
+        true,
+        true,
+        60,
+        null,
+        false
+    );
+
+    Assert.assertThrows(
+        "For `pushgateway` strategy, pushGatewayAddress must be specified.",
+        IllegalArgumentException.class,
+        () -> new PrometheusEmitterConfig(
+            PrometheusEmitterConfig.Strategy.pushgateway,
+            "namespace5",
+            null,
+            null,
+            null,
+            true,
+            true,
+            50,
+            null,
+            false
+        )
+    );
+  }
+
+  @Test
+  public void testEmitterStartWithHttpUrl()
+  {
+    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace4", null, 0, "http://pushgateway", true, true, 60, null, false);
+    PrometheusEmitter pushEmitter = new PrometheusEmitter(pushEmitterConfig);
+    pushEmitter.start();
+    Assert.assertNotNull(pushEmitter.getPushGateway());
+  }
+
+  @Test
+  public void testEmitterStartWithHttpsUrl()
+  {
+    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace5", null, 0, "https://pushgateway", true, true, 60, null, false);
+    PrometheusEmitter pushEmitter = new PrometheusEmitter(pushEmitterConfig);
+    pushEmitter.start();
+    Assert.assertNotNull(pushEmitter.getPushGateway());
+  }
+
+  @Test
+  public void testEmitterConfig()
+  {
+    Assert.assertThrows(
+        "For `exporter` strategy, port must be specified.",
+        IllegalArgumentException.class,
+        () -> new PrometheusEmitterConfig(
+            PrometheusEmitterConfig.Strategy.exporter,
+            "namespace5",
+            null,
+            null,
+            "https://pushgateway",
+            true,
+            true,
+            60,
+            null,
+            false
+        )
+    );
+
+    // For pushgateway strategy, port can be null
+    new PrometheusEmitterConfig(
+        PrometheusEmitterConfig.Strategy.pushgateway,
+        "namespace5",
+        null,
+        null,
+        "https://pushgateway",
+        true,
+        true,
+        60,
+        null,
+        false
+    );
+  }
+
+  @Test
   public void testEmitterWithDeleteOnShutdown() throws IOException
   {
-    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60, true);
+    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60, null, true);
 
     PushGateway mockPushGateway = mock(PushGateway.class);
     mockPushGateway.push(anyObject(CollectorRegistry.class), anyString(), anyObject(ImmutableMap.class));
@@ -166,7 +373,7 @@ public class PrometheusEmitterTest
   @Test
   public void testEmitterWithoutDeleteOnShutdown() throws IOException
   {
-    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60, false);
+    PrometheusEmitterConfig emitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace3", null, 0, "pushgateway", true, true, 60, null, false);
 
     PushGateway mockPushGateway = mock(PushGateway.class);
     mockPushGateway.push(anyObject(CollectorRegistry.class), anyString(), anyObject(ImmutableMap.class));
@@ -186,89 +393,5 @@ public class PrometheusEmitterTest
     emitter.close();
 
     EasyMock.verify(mockPushGateway);
-  }
-
-  @Test
-  public void testEmitterConfigCreationWithNullAsAddress()
-  {
-    // pushGatewayAddress can be null if it's exporter mode
-    new PrometheusEmitterConfig(
-        PrometheusEmitterConfig.Strategy.exporter,
-        "namespace5",
-        null,
-        1,
-        null,
-        true,
-        true,
-        60,
-        false
-    );
-
-    Assert.assertThrows(
-        "For `pushgateway` strategy, pushGatewayAddress must be specified.",
-        IllegalArgumentException.class,
-        () -> new PrometheusEmitterConfig(
-            PrometheusEmitterConfig.Strategy.pushgateway,
-            "namespace5",
-            null,
-            null,
-            null,
-            true,
-            true,
-            50,
-            false
-        )
-    );
-  }
-
-  @Test
-  public void testEmitterStartWithHttpUrl()
-  {
-    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace4", null, 0, "http://pushgateway", true, true, 60, false);
-    PrometheusEmitter pushEmitter = new PrometheusEmitter(pushEmitterConfig);
-    pushEmitter.start();
-    Assert.assertNotNull(pushEmitter.getPushGateway());
-  }
-
-  @Test
-  public void testEmitterStartWithHttpsUrl()
-  {
-    PrometheusEmitterConfig pushEmitterConfig = new PrometheusEmitterConfig(PrometheusEmitterConfig.Strategy.pushgateway, "namespace5", null, 0, "https://pushgateway", true, true, 60, false);
-    PrometheusEmitter pushEmitter = new PrometheusEmitter(pushEmitterConfig);
-    pushEmitter.start();
-    Assert.assertNotNull(pushEmitter.getPushGateway());
-  }
-
-  @Test
-  public void testEmitterConfig()
-  {
-    Assert.assertThrows(
-        "For `exporter` strategy, port must be specified.",
-        IllegalArgumentException.class,
-        () -> new PrometheusEmitterConfig(
-            PrometheusEmitterConfig.Strategy.exporter,
-            "namespace5",
-            null,
-            null,
-            "https://pushgateway",
-            true,
-            true,
-            60,
-            false
-        )
-    );
-
-    // For pushgateway strategy, port can be null
-    new PrometheusEmitterConfig(
-        PrometheusEmitterConfig.Strategy.pushgateway,
-        "namespace5",
-        null,
-        null,
-        "https://pushgateway",
-        true,
-        true,
-        60,
-        false
-    );
   }
 }
